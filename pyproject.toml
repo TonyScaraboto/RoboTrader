@@ -1,0 +1,21 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "robo-trade"
+version = "0.1.0"
+description = "Minimal trading bot scaffold"
+authors = [{ name = "User" }]
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+  "ccxt>=4.2.0",
+  "pandas>=2.2.0",
+  "numpy>=1.26.0",
+  "python-dotenv>=1.0.0",
+  "requests>=2.32.0"
+]
+
+[tool.hatch.build.targets.wheel]
+packages = ["robo_trade"]
