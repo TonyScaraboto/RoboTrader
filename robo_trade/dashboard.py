@@ -1,17 +1,296 @@
 from __future__ import annotations
 import os
 from pathlib import Path
-from flask import Flask, render_template_string, request, jsonify
+from flask import Flask, render_template_string, request, jsonify, session, redirect, url_for
 import csv
 import threading
 import time
 from typing import List, Dict, Any
 from .config import settings
+from . import db
 
 try:
   import ccxt  # type: ignore
 except Exception:
   ccxt = None
+
+LOGIN_TEMPLATE = """
+<!doctype html>
+<html lang="pt-br">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Login - Avalon Broker</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Arial, sans-serif;
+      background: linear-gradient(135deg, #0f172a 0%, #1e293b 100%);
+      color: #e5e7eb;
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 20px;
+    }
+    .login-container {
+      background: #111827;
+      border: 1px solid #1f2937;
+      border-radius: 16px;
+      padding: 48px;
+      max-width: 420px;
+      width: 100%;
+      box-shadow: 0 12px 32px rgba(0, 0, 0, 0.4);
+    }
+    .logo {
+      text-align: center;
+      margin-bottom: 32px;
+    }
+    .logo-icon {
+      font-size: 48px;
+      margin-bottom: 12px;
+    }
+    .logo-text {
+      font-size: 28px;
+      font-weight: 700;
+      background: linear-gradient(135deg, #87CEEB 0%, #4A90E2 100%);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+    }
+    .logo-subtitle {
+      font-size: 14px;
+      color: #9ca3af;
+      margin-top: 8px;
+    }
+    .form-group {
+      margin-bottom: 20px;
+    }
+    label {
+      display: block;
+      font-size: 13px;
+      font-weight: 600;
+      color: #d1d5db;
+      margin-bottom: 8px;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+    input, select {
+      width: 100%;
+      background: #0b1220;
+      border: 1px solid #1f2937;
+      color: #e5e7eb;
+      padding: 14px 16px;
+      border-radius: 8px;
+      font-size: 15px;
+      transition: all 0.2s ease;
+      outline: none;
+    }
+    input:focus, select:focus {
+      border-color: #87CEEB;
+      box-shadow: 0 0 0 3px rgba(135, 206, 235, 0.1);
+      background: #131a2f;
+    }
+    .btn {
+      width: 100%;
+      background: linear-gradient(135deg, #87CEEB 0%, #6BB6E3 100%);
+      color: #0b1220;
+      border: none;
+      padding: 14px;
+      border-radius: 8px;
+      font-size: 15px;
+      font-weight: 700;
+      cursor: pointer;
+      transition: all 0.3s ease;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      margin-top: 8px;
+    }
+    .btn:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 8px 24px rgba(135, 206, 235, 0.4);
+    }
+    .btn:active {
+      transform: translateY(0);
+    }
+    .btn:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+      transform: none;
+    }
+    .alert {
+      padding: 12px 16px;
+      border-radius: 8px;
+      margin-bottom: 20px;
+      font-size: 14px;
+      display: none;
+    }
+    .alert-error {
+      background: rgba(239, 68, 68, 0.1);
+      border: 1px solid rgba(239, 68, 68, 0.3);
+      color: #fca5a5;
+    }
+    .alert-success {
+      background: rgba(34, 197, 94, 0.1);
+      border: 1px solid rgba(34, 197, 94, 0.3);
+      color: #86efac;
+    }
+    .divider {
+      text-align: center;
+      margin: 24px 0;
+      color: #6b7280;
+      font-size: 13px;
+    }
+    .info-box {
+      background: rgba(135, 206, 235, 0.08);
+      border: 1px solid rgba(135, 206, 235, 0.2);
+      border-radius: 8px;
+      padding: 12px 16px;
+      margin-top: 20px;
+      font-size: 13px;
+      color: #9ca3af;
+      line-height: 1.6;
+    }
+    .spinner {
+      display: inline-block;
+      width: 16px;
+      height: 16px;
+      border: 2px solid rgba(11, 18, 32, 0.3);
+      border-top-color: #0b1220;
+      border-radius: 50%;
+      animation: spin 0.6s linear infinite;
+      margin-right: 8px;
+    }
+    @keyframes spin {
+      to { transform: rotate(360deg); }
+    }
+  </style>
+</head>
+<body>
+  <div class="login-container">
+    <div class="logo">
+      <div class="logo-icon">⚡</div>
+      <div class="logo-text">Avalon Broker</div>
+      <div class="logo-subtitle">Sistema de Trading Automatizado</div>
+    </div>
+    
+    <div id="alert" class="alert"></div>
+    
+    <form id="loginForm">
+      <div class="form-group">
+        <label for="email">Email</label>
+        <input 
+          type="email" 
+          id="email" 
+          name="email" 
+          placeholder="seu@email.com" 
+          required
+          autocomplete="email"
+        />
+      </div>
+      
+      <div class="form-group">
+        <label for="password">Senha</label>
+        <input 
+          type="password" 
+          id="password" 
+          name="password" 
+          placeholder="••••••••" 
+          required
+          autocomplete="current-password"
+        />
+      </div>
+      
+      <div class="form-group">
+        <label for="environment">Ambiente</label>
+        <select id="environment" name="environment">
+          <option value="demo">Demo (Treinamento)</option>
+          <option value="real">Real (Dinheiro Real)</option>
+        </select>
+      </div>
+      
+      <button type="submit" class="btn" id="submitBtn">
+        Conectar ao Avalon
+      </button>
+    </form>
+    
+    <div class="info-box">
+      ℹ️ Use o ambiente <strong>Demo</strong> para treinar sem risco. 
+      Mude para <strong>Real</strong> apenas quando estiver pronto.
+    </div>
+  </div>
+  
+  <script>
+    const form = document.getElementById('loginForm');
+    const submitBtn = document.getElementById('submitBtn');
+    const alertBox = document.getElementById('alert');
+    
+    function showAlert(message, type = 'error') {
+      alertBox.textContent = message;
+      alertBox.className = `alert alert-${type}`;
+      alertBox.style.display = 'block';
+      
+      if (type === 'success') {
+        setTimeout(() => {
+          alertBox.style.display = 'none';
+        }, 2000);
+      }
+    }
+    
+    function setLoading(loading) {
+      submitBtn.disabled = loading;
+      if (loading) {
+        submitBtn.innerHTML = '<span class="spinner"></span> Conectando...';
+      } else {
+        submitBtn.textContent = 'Conectar ao Avalon';
+      }
+    }
+    
+    form.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      
+      const formData = new FormData(form);
+      const email = formData.get('email');
+      const password = formData.get('password');
+      const environment = formData.get('environment');
+      
+      if (!email || !password) {
+        showAlert('Por favor, preencha todos os campos', 'error');
+        return;
+      }
+      
+      setLoading(true);
+      alertBox.style.display = 'none';
+      
+      try {
+        const response = await fetch('/login', {
+          method: 'POST',
+          body: formData
+        });
+        
+        const data = await response.json();
+        
+        if (data.success) {
+          showAlert(data.message, 'success');
+          setTimeout(() => {
+            window.location.href = data.redirect || '/';
+          }, 500);
+        } else {
+          showAlert(data.message || 'Erro ao conectar', 'error');
+          setLoading(false);
+        }
+      } catch (error) {
+        showAlert('Erro de conexão. Verifique sua internet.', 'error');
+        setLoading(false);
+      }
+    });
+    
+    // Auto-focus no email
+    document.getElementById('email').focus();
+  </script>
+</body>
+</html>
+"""
 
 TEMPLATE = """
 <!doctype html>
@@ -98,10 +377,10 @@ TEMPLATE = """
       <header>
         <div class="header-title">📈 Visão Geral</div>
         <div class="header-controls">
-          <label class="small" style="margin:0;display:flex;align-items:center;gap:6px">Quotex:
-            <select id="quotexEnvironment" style="margin:0;min-width:130px" onchange="changeQuotexEnvironment(this.value)">
-              <option value="demo">🏦 Demo (Sem Risco)</option>
-              <option value="live">💰 Real (COM RISCO)</option>
+          <label class="small" style="margin:0;display:flex;align-items:center;gap:6px">Avalon:
+            <select id="avalonEnvironment" style="margin:0;min-width:130px" onchange="changeavalonEnvironment(this.value)">
+              <option value="demo">🏦 Demo Avalon (Sem Risco)</option>
+              <option value="live">💰 Real Avalon (COM RISCO)</option>
             </select>
           </label>
           <label class="small" style="margin:0;display:flex;align-items:center;gap:6px">Conta:
@@ -259,6 +538,8 @@ TEMPLATE = """
       window.location.href = '/';
     } else if (page === 'operacoes') {
       window.location.href = '/operacoes';
+    } else if (page === 'configuracoes') {
+      window.location.href = '/configuracoes';
     }
     return false;
   }
@@ -285,13 +566,13 @@ TEMPLATE = """
     });
   })();
   
-  // Inicializar seletor de ambiente Quotex
-  (function initQuotexEnvironment(){
-    const select = document.getElementById('quotexEnvironment');
-    const saved = localStorage.getItem('quotexEnvironment') || 'demo';
+  // Inicializar seletor de ambiente avalon
+  (function initavalonEnvironment(){
+    const select = document.getElementById('avalonEnvironment');
+    const saved = localStorage.getItem('avalonEnvironment') || 'demo';
     select.value = saved;
-    currentQuotexEnvironment = saved;
-    updateQuotexEnvironmentUI();
+    currentavalonEnvironment = saved;
+    updateavalonEnvironmentUI();
   })();
 
   async function startBot(){
@@ -416,20 +697,20 @@ TEMPLATE = """
   };
   
   let currentAccount = 'all';
-  let currentQuotexEnvironment = 'demo'; // demo ou live
+  let currentavalonEnvironment = 'demo'; // demo ou live
   
-  // ===== GERENCIAMENTO DE AMBIENTE QUOTEX =====
-  async function changeQuotexEnvironment(env) {
-    const oldEnv = currentQuotexEnvironment;
-    currentQuotexEnvironment = env;
+  // ===== GERENCIAMENTO DE AMBIENTE avalon =====
+  async function changeavalonEnvironment(env) {
+    const oldEnv = currentavalonEnvironment;
+    currentavalonEnvironment = env;
     
-    const select = document.getElementById('quotexEnvironment');
+    const select = document.getElementById('avalonEnvironment');
     
     // Mostrar aviso se mudar para LIVE
     if (env === 'live') {
       const confirmChange = confirm(
         '⚠️ AVISO IMPORTANTE!\n\n' +
-        'Você está prestes a trocar para a conta REAL da Quotex.\n\n' +
+        'Você está prestes a trocar para a conta REAL da Avalon.\n\n' +
         '❌ Isso significa que você operará COM DINHEIRO REAL\n' +
         '❌ Operações perdidas resultarão em perda REAL de dinheiro\n' +
         '❌ Você é totalmente responsável pelas operações\n\n' +
@@ -438,7 +719,7 @@ TEMPLATE = """
       );
       
       if (!confirmChange) {
-        currentQuotexEnvironment = oldEnv;
+        currentavalonEnvironment = oldEnv;
         select.value = oldEnv;
         alert('❌ Mudança cancelada. Continuando com: ' + oldEnv.toUpperCase());
         return;
@@ -446,43 +727,43 @@ TEMPLATE = """
     }
     
     try {
-      const res = await fetch('/set-quotex-environment', {
+      const res = await fetch('/set-avalon-environment', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ environment: env })
       });
       
       if (!res.ok) {
-        throw new Error('Erro ao mudar ambiente Quotex');
+        throw new Error('Erro ao mudar ambiente avalon');
       }
       
       const data = await res.json();
       
       if (data.status === 'success') {
         if (env === 'live') {
-          alert('✅ Ambiente alterado para REAL (Conta Quotex Real)\n\n' +
+          alert('✅ Ambiente alterado para REAL (Conta Avalon Real)\n\n' +
                 '⚠️ LEMBRE-SE: Operações agora afetam sua conta real!\n' +
                 '📊 Monitore constantemente!');
         } else {
-          alert('✅ Ambiente alterado para DEMO (Conta Demo Quotex Segura)');
+          alert('✅ Ambiente alterado para DEMO (Conta Demo Avalon Segura)');
         }
         
         // Atualizar estilo do seletor
-        updateQuotexEnvironmentUI();
+        updateavalonEnvironmentUI();
       } else {
         throw new Error(data.message || 'Erro desconhecido');
       }
     } catch (error) {
       alert('❌ Erro ao mudar ambiente: ' + error.message);
-      currentQuotexEnvironment = oldEnv;
+      currentavalonEnvironment = oldEnv;
       select.value = oldEnv;
-      updateQuotexEnvironmentUI();
+      updateavalonEnvironmentUI();
     }
   }
   
-  function updateQuotexEnvironmentUI() {
-    const select = document.getElementById('quotexEnvironment');
-    if (currentQuotexEnvironment === 'live') {
+  function updateavalonEnvironmentUI() {
+    const select = document.getElementById('avalonEnvironment');
+    if (currentavalonEnvironment === 'live') {
       select.style.borderColor = '#ef4444';
       select.style.background = 'rgba(239,68,68,0.1)';
       select.style.color = '#ef4444';
@@ -888,7 +1169,29 @@ app = Flask(
   static_url_path='/static'
 )
 
+# Configurar chave secreta para sessões
+app.secret_key = os.getenv('SECRET_KEY', 'dev-secret-key-change-in-production')
+
 DATA_FILE = Path("data/martingale_operations.csv")
+
+# Initialize DB schema when possible
+try:
+  db.ensure_schema()
+except Exception:
+  pass
+
+# Decorator para verificar autenticação
+from functools import wraps
+
+def login_required(f):
+  @wraps(f)
+  def decorated_function(*args, **kwargs):
+    if not session.get('logged_in'):
+      if request.is_json or request.path.startswith('/api/') or request.path.startswith('/summary'):
+        return jsonify({'error': 'Autenticação necessária', 'redirect': '/login'}), 401
+      return redirect(url_for('login'))
+    return f(*args, **kwargs)
+  return decorated_function
 
 class BotRunner:
   def __init__(self):
@@ -915,7 +1218,7 @@ class BotRunner:
       from .broker import create_broker_from_settings
       self.broker = create_broker_from_settings(settings) if mode in ('paper','live') else None
       
-      # Tentar buscar saldo inicial da conta Quotex
+      # Tentar buscar saldo inicial da conta avalon
       if self.broker and mode == 'live':
         try:
           balance_info = self.broker.get_balance()
@@ -936,7 +1239,7 @@ class BotRunner:
     self.status = 'parado'
 
   def run_loop(self):
-    headers, rows = load_csv(DATA_FILE)
+    headers, rows = load_operations()
     total_profit = sum(float(r.get('profit_brl', 0) or 0) for r in rows)
     self.equity_curve = [sum(float(rows[i].get('profit_brl',0) or 0) for i in range(j+1)) for j in range(len(rows))]
     self.win_loss_series = [1 if str(r.get('win')).lower() in ('true','1') else -1 for r in rows]
@@ -982,7 +1285,10 @@ class BotRunner:
           self.broker.place_order(self.symbol, side, float(stake), expiration_time=exp)
       except Exception:
         pass
-      append_row({
+      append_operation({
+        'symbol': self.symbol,
+        'timeframe': self.timeframe,
+        'mode': getattr(self, 'mode', 'paper'),
         'index': i,
         'entry_direction': current_dir,
         'candle_direction': this_dir,
@@ -1006,16 +1312,31 @@ class BotRunner:
     self.status = 'parado'
 
 
-def load_csv(path: Path):
-  if not path.exists():
+def load_operations(limit: int = 200):
+  # Prefer PostgreSQL; fallback to CSV
+  try:
+    ops = db.fetch_operations(limit=limit)
+    if ops:
+      headers = list(ops[0].keys())
+      return headers, ops
+  except Exception:
+    pass
+  if not DATA_FILE.exists():
     return [], []
-  with path.open("r", encoding="utf-8") as f:
+  with DATA_FILE.open("r", encoding="utf-8") as f:
     reader = csv.DictReader(f)
     rows = list(reader)
     headers = reader.fieldnames or []
     return headers, rows
 
-def append_row(row: Dict[str, Any]):
+def append_operation(row: Dict[str, Any]):
+  # Try DB first
+  try:
+    if db.insert_operation(row):
+      return
+  except Exception:
+    pass
+  # Fallback to CSV
   exists = DATA_FILE.exists()
   with DATA_FILE.open('a', newline='', encoding='utf-8') as f:
     writer = csv.DictWriter(f, fieldnames=list(row.keys()))
@@ -1027,7 +1348,16 @@ runner = BotRunner()
 
 @app.route("/")
 def index():
-    headers, rows = load_csv(DATA_FILE)
+    """Rota inicial - redireciona para login ou dashboard"""
+    if session.get('logged_in'):
+        return redirect(url_for('dashboard'))
+    return redirect(url_for('login'))
+
+@app.route("/dashboard")
+@login_required
+def dashboard():
+    """Dashboard principal do robô"""
+    headers, rows = load_operations()
     wins = sum(1 for r in rows if str(r.get("win")).lower() in ("true", "1"))
     losses = len(rows) - wins
     total_profit = sum(float(r.get("profit_brl", 0) or 0) for r in rows)
@@ -1046,6 +1376,7 @@ def index():
     )
 
 @app.route('/start', methods=['POST'])
+@login_required
 def start():
     data = request.get_json(force=True)
     symbol = data.get('symbol', 'ADA/USDT')
@@ -1062,11 +1393,13 @@ def start():
     return jsonify({'status': runner.status, 'symbol': runner.symbol, 'timeframe': runner.timeframe, 'mode': mode, 'payout': float(payout) if payout is not None else settings.payout_ratio})
 
 @app.route('/stop', methods=['POST'])
+@login_required
 def stop():
     runner.stop()
     return jsonify({'status': runner.status})
 
 @app.route('/configuracoes')
+@login_required
 def configuracoes():
     # Carregar configurações atuais do .env
     env_path = Path(__file__).parent.parent / '.env'
@@ -1079,9 +1412,9 @@ def configuracoes():
                     key, value = line.split('=', 1)
                     env_vars[key.strip()] = value.strip()
     
-    quotex_email = env_vars.get('QUOTEX_EMAIL', '')
-    quotex_password = env_vars.get('QUOTEX_PASSWORD', '')
-    quotex_lang = env_vars.get('QUOTEX_LANG', 'pt')
+    avalon_email = env_vars.get('avalon_EMAIL', '')
+    avalon_password = env_vars.get('avalon_PASSWORD', '')
+    avalon_lang = env_vars.get('avalon_LANG', 'pt')
     initial_balance = env_vars.get('INITIAL_BALANCE_BRL', '5')
     
     return render_template_string(f"""
@@ -1140,29 +1473,29 @@ def configuracoes():
           <a href="/" class="back-btn">← Voltar para Dashboard</a>
           
           <div class="card">
-            <h2>🔑 Credenciais Quotex</h2>
+            <h2>🔑 Credenciais avalon</h2>
             <div class="alert alert-info">
-              <strong>📌 Importante:</strong> Use o email e senha da sua conta Quotex para conectar o bot.
-              O bot utiliza a biblioteca PyQuotex oficial para se conectar à plataforma.
+              <strong>📌 Importante:</strong> Use o email e senha da sua conta avalon para conectar o bot.
+              O bot utiliza a biblioteca Pyavalon oficial para se conectar à plataforma.
             </div>
             
             <form id="configForm" onsubmit="return saveConfig(event)">
               <div class="form-group">
-                <label>Email <span class="label-hint">(Email da sua conta Quotex)</span></label>
-                <input type="email" id="email" name="email" value="{quotex_email}" placeholder="seu@email.com" required>
+                <label>Email <span class="label-hint">(Email da sua conta avalon)</span></label>
+                <input type="email" id="email" name="email" value="{avalon_email}" placeholder="seu@email.com" required>
               </div>
               
               <div class="form-group">
-                <label>Senha <span class="label-hint">(Senha da sua conta Quotex)</span></label>
-                <input type="password" id="password" name="password" value="{quotex_password}" placeholder="Sua senha" required>
+                <label>Senha <span class="label-hint">(Senha da sua conta avalon)</span></label>
+                <input type="password" id="password" name="password" value="{avalon_password}" placeholder="Sua senha" required>
               </div>
               
               <div class="form-group">
-                <label>Idioma <span class="label-hint">(Idioma da interface Quotex)</span></label>
+                <label>Idioma <span class="label-hint">(Idioma da interface avalon)</span></label>
                 <select id="lang" name="lang" required>
-                  <option value="pt" {'selected' if quotex_lang == 'pt' else ''}>Português (pt)</option>
-                  <option value="en" {'selected' if quotex_lang == 'en' else ''}>English (en)</option>
-                  <option value="es" {'selected' if quotex_lang == 'es' else ''}>Español (es)</option>
+                  <option value="pt" {'selected' if avalon_lang == 'pt' else ''}>Português (pt)</option>
+                  <option value="en" {'selected' if avalon_lang == 'en' else ''}>English (en)</option>
+                  <option value="es" {'selected' if avalon_lang == 'es' else ''}>Español (es)</option>
                 </select>
               </div>
               
@@ -1238,10 +1571,10 @@ def configuracoes():
     const msgDiv = document.getElementById('message');
     msgDiv.style.display = 'block';
     msgDiv.className = 'alert alert-info';
-    msgDiv.innerHTML = '🔄 Testando conexão com Quotex...';
+    msgDiv.innerHTML = '🔄 Testando conexão com avalon...';
     
     try {{
-      const response = await fetch('/test-quotex-connection');
+      const response = await fetch('/test-avalon-connection');
       const result = await response.json();
       
       if (result.status === 'success') {{
@@ -1288,9 +1621,9 @@ def save_config():
         
         # Atualizar ou adicionar variáveis
         updated_vars = {{
-            'QUOTEX_EMAIL': email,
-            'QUOTEX_PASSWORD': password,
-            'QUOTEX_LANG': lang,
+            'avalon_EMAIL': email,
+            'avalon_PASSWORD': password,
+            'avalon_LANG': lang,
             'INITIAL_BALANCE_BRL': initial_balance
         }}
         
@@ -1331,8 +1664,8 @@ def save_config():
             'message': f'Erro ao salvar configurações: {{str(e)}}'
         }}), 500
 
-@app.route('/test-quotex-connection')
-def test_quotex_connection():
+@app.route('/test-avalon-connection')
+def test_avalon_connection():
     try:
         from .broker import create_broker_from_settings
         broker = create_broker_from_settings(settings)
@@ -1355,8 +1688,8 @@ def test_quotex_connection():
             'message': f'Erro na conexão: {{str(e)}}'
         }}), 500
 
-@app.route('/set-quotex-environment', methods=['POST'])
-def set_quotex_environment():
+@app.route('/set-avalon-environment', methods=['POST'])
+def set_avalon_environment():
     data = request.get_json(force=True)
     env = data.get('environment', 'demo')
     
@@ -1365,11 +1698,11 @@ def set_quotex_environment():
     
     try:
         # Atualizar as configurações
-        settings.quotex_environment = env
+        settings.avalon_environment = env
         
         # Também atualizar a variável de ambiente para próximas sessões
         import os
-        os.environ['QUOTEX_ENVIRONMENT'] = env
+        os.environ['avalon_ENVIRONMENT'] = env
         
         # Se há um broker já inicializado, recriar com o novo ambiente
         if hasattr(runner, 'broker') and runner.broker:
@@ -1377,7 +1710,7 @@ def set_quotex_environment():
             runner.broker = create_broker_from_settings(settings)
         
         import logging
-        logging.info(f"Ambiente Quotex alterado para: {env}")
+        logging.info(f"Ambiente avalon alterado para: {env}")
         
         return jsonify({
             'status': 'success',
@@ -1386,13 +1719,14 @@ def set_quotex_environment():
         })
     except Exception as e:
         import logging
-        logging.error(f"Erro ao mudar ambiente Quotex: {str(e)}")
+        logging.error(f"Erro ao mudar ambiente avalon: {str(e)}")
         return jsonify({
             'status': 'error',
             'message': f'Erro ao mudar ambiente: {str(e)}'
         }), 500
 
 @app.route('/operacoes')
+@login_required
 def operacoes():
     return render_template_string("""
 <!doctype html>
@@ -1560,15 +1894,30 @@ def operacoes():
 
 @app.route('/operations_data')
 def operations_data():
-    headers, rows = load_csv(DATA_FILE)
+    headers, rows = load_operations()
     return jsonify({
         'headers': headers,
         'rows': rows
     })
 
+@app.route('/db-health')
+def db_health():
+    try:
+      conn = db.get_connection()
+      if conn:
+        with conn.cursor() as cur:
+          cur.execute('SELECT 1')
+          cur.fetchone()
+        conn.close()
+        return jsonify({'status': 'ok', 'message': 'PostgreSQL conectado'}), 200
+      return jsonify({'status': 'unconfigured', 'message': 'Conexão não configurada ou indisponível'}), 200
+    except Exception as e:
+      return jsonify({'status': 'error', 'message': str(e)}), 500
+
 @app.route('/summary')
+@login_required
 def summary():
-  headers, rows = load_csv(DATA_FILE)
+  headers, rows = load_operations()
   wins = sum(1 for r in rows if str(r.get("win")).lower() in ("true", "1"))
   losses = len(rows) - wins
   total_profit = sum(float(r.get("profit_brl", 0) or 0) for r in rows)
@@ -1602,18 +1951,18 @@ def summary():
   except Exception:
     pass
   
-  # Get Quotex balance if broker is connected
-  quotex_balance = None
-  quotex_status = "disconnected"
+  # Get avalon balance if broker is connected
+  avalon_balance = None
+  avalon_status = "disconnected"
   if hasattr(runner, 'broker') and runner.broker:
     try:
       balance_info = runner.broker.get_balance()
-      quotex_balance = balance_info.get('balance', 0.0)
-      quotex_status = balance_info.get('status', 'error')
+      avalon_balance = balance_info.get('balance', 0.0)
+      avalon_status = balance_info.get('status', 'error')
     except Exception as e:
       import logging
-      logging.warning(f"Failed to get Quotex balance: {str(e)}")
-      quotex_status = "error"
+      logging.warning(f"Failed to get avalon balance: {str(e)}")
+      avalon_status = "error"
   
   return jsonify({
     'ops_count': len(rows),
@@ -1624,8 +1973,87 @@ def summary():
     'win_loss_series': runner.win_loss_series,
     'bot': {'status': runner.status, 'symbol': runner.symbol, 'timeframe': runner.timeframe},
     'account': {'balance_brl': runner.balance_brl},
-    'quotex': {'balance': quotex_balance, 'status': quotex_status},
+    'avalon': {'balance': avalon_balance, 'status': avalon_status},
     'candles': candles_js
+  })
+
+@app.route('/login', methods=['GET', 'POST'])
+def login():
+  """Página e autenticação de login"""
+  if request.method == 'POST':
+    email = request.form.get('email', '')
+    password = request.form.get('password', '')
+    environment = request.form.get('environment', 'demo')
+    
+    if not email or not password:
+      return jsonify({'success': False, 'message': 'Email e senha são obrigatórios'}), 400
+    
+    # Tenta conectar ao Avalon
+    try:
+      from .avalon import AvalonClient, AvalonConfig
+      import asyncio
+      
+      config = AvalonConfig(
+        email=email,
+        password=password,
+        lang='pt',
+        environment=environment
+      )
+      
+      client = AvalonClient(config)
+      loop = asyncio.new_event_loop()
+      asyncio.set_event_loop(loop)
+      
+      try:
+        connected = loop.run_until_complete(client.connect())
+        
+        if connected:
+          # Salva credenciais na sessão
+          session['avalon_email'] = email
+          session['avalon_password'] = password
+          session['avalon_environment'] = environment
+          session['logged_in'] = True
+          
+          # Atualiza configurações do runner se existir
+          if hasattr(runner, 'broker'):
+            runner.broker = client
+          
+          return jsonify({
+            'success': True,
+            'message': f'Conectado ao Avalon ({environment})',
+            'redirect': '/'
+          })
+        else:
+          return jsonify({
+            'success': False,
+            'message': 'Falha na conexão com Avalon'
+          }), 401
+          
+      finally:
+        loop.close()
+        
+    except Exception as e:
+      return jsonify({
+        'success': False,
+        'message': f'Erro ao conectar: {str(e)}'
+      }), 500
+  
+  # GET: Exibe página de login
+  return render_template_string(LOGIN_TEMPLATE)
+
+@app.route('/logout')
+def logout():
+  """Desconecta e limpa sessão"""
+  session.clear()
+  return redirect(url_for('login'))
+
+@app.route('/check-auth')
+def check_auth():
+  """Verifica se usuário está autenticado"""
+  return jsonify({
+    'logged_in': session.get('logged_in', False),
+    'email': session.get('avalon_email', ''),
+    'environment': session.get('avalon_environment', 'demo')
   })
 
 if __name__ == "__main__":

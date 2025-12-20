@@ -12,9 +12,9 @@
     /* secondary text */
     --border: #1f2937;
     /* borders */
-    --accent: #16a34a;
+    --accent: #87CEEB;
     /* primary accent */
-    --accent-600: #22c55e;
+    --accent-600: #6BB6E3;
     /* hover */
     --danger: #ef4444;
     /* destructive */
@@ -55,7 +55,7 @@ body {
 }
 
 body {
-    color-scheme: light dark
+    color-scheme: lightgreen dark
 }
 
 /* Layout */
@@ -88,7 +88,7 @@ aside {
 
 .nav a.active,
 .nav a:hover {
-    background: #0e1628;
+    background: lightskyblue;
     color: var(--text)
 }
 
@@ -329,8 +329,8 @@ canvas {
         --text: #0b1220;
         --muted: #516170;
         --border: #e5e9f0;
-        --accent: #16a34a;
-        --accent-600: #12893f;
+        --accent: #87CEEB;
+        --accent-600: #6BB6E3;
         --danger: #d92c3a;
     }
 
@@ -378,8 +378,8 @@ canvas {
     --text: #0b1220;
     --muted: #516170;
     --border: #e5e9f0;
-    --accent: #16a34a;
-    --accent-600: #12893f;
+    --accent: #87CEEB;
+    --accent-600: #6BB6E3;
     --danger: #d92c3a;
     color-scheme: light;
 }

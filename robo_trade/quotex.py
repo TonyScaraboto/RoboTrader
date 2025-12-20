@@ -3,8 +3,14 @@ from dataclasses import dataclass
 from typing import Optional, Dict, Any
 import asyncio
 import logging
+import sys
 from datetime import datetime
 
+# Suppress noisy asyncio event loop warnings on Windows
+if sys.platform.startswith('win'):
+    asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
+
+logging.getLogger('asyncio').setLevel(logging.ERROR)
 logger = logging.getLogger(__name__)
 
 @dataclass

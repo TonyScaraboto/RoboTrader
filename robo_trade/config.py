@@ -24,6 +24,15 @@ class Settings:
     
     # Trading configuration
     expiration_time: int = int(os.getenv("EXPIRATION_TIME", "60"))  # seconds
+
+    # Database (PostgreSQL) configuration
+    database_url: str | None = os.getenv("DATABASE_URL")
+    postgres_host: str | None = os.getenv("POSTGRES_HOST")
+    postgres_port: str | None = os.getenv("POSTGRES_PORT", "5432")
+    postgres_db: str | None = os.getenv("POSTGRES_DB")
+    postgres_user: str | None = os.getenv("POSTGRES_USER")
+    postgres_password: str | None = os.getenv("POSTGRES_PASSWORD")
+    postgres_sslmode: str | None = os.getenv("PGSSLMODE")
     
     def reload(self):
         """Recarrega as configurações do arquivo .env"""
@@ -43,5 +52,12 @@ class Settings:
         self.initial_balance_brl = float(os.getenv("INITIAL_BALANCE_BRL", "1000"))
         self.payout_ratio = float(os.getenv("PAYOUT_RATIO", "85.0"))
         self.expiration_time = int(os.getenv("EXPIRATION_TIME", "60"))
+        self.database_url = os.getenv("DATABASE_URL")
+        self.postgres_host = os.getenv("POSTGRES_HOST")
+        self.postgres_port = os.getenv("POSTGRES_PORT", "5432")
+        self.postgres_db = os.getenv("POSTGRES_DB")
+        self.postgres_user = os.getenv("POSTGRES_USER")
+        self.postgres_password = os.getenv("POSTGRES_PASSWORD")
+        self.postgres_sslmode = os.getenv("PGSSLMODE")
 
 settings = Settings()
