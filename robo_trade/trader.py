@@ -8,7 +8,7 @@ from .exchange import ExchangeClient
 from .backtest import Backtester
 from .martingale import MartingaleManager, MartingaleConfig
 from .logger import CSVLogger
-from .quotex import QuotexClient, QuotexConfig
+from .avalon import AvalonClient, AvalonConfig
 from strategies.ema_cross import EMACross
 
 
@@ -44,21 +44,22 @@ def run_martingale_backtest() -> None:
 
 
 def run_paper() -> None:
-    """Paper trading mode with Quotex platform simulation."""
-    print("=== Paper Trading Mode (Quotex) ===")
+    """Paper trading mode with Avalon Broker platform simulation."""
+    print("=== Paper Trading Mode (Avalon Broker) ===")
     
-    if not settings.quotex_email or not settings.quotex_password:
-        print("WARNING: QUOTEX_EMAIL or QUOTEX_PASSWORD not configured.")
+    if not settings.avalon_email or not settings.avalon_password:
+        print("WARNING: AVALON_EMAIL or AVALON_PASSWORD not configured.")
         print("Running in simulation mode only.")
     
-    config = QuotexConfig(
-        email=settings.quotex_email,
-        password=settings.quotex_password,
-        lang=settings.quotex_lang
+    config = AvalonConfig(
+        email=settings.avalon_email,
+        password=settings.avalon_password,
+        lang=settings.avalon_lang,
+        environment="demo"
     )
     
     try:
-        client = QuotexClient(config)
+        client = AvalonClient(config)
         
         # Get account info
         balance = client.get_balance()
@@ -71,7 +72,7 @@ def run_paper() -> None:
         asset_info = client.get_asset_info(settings.symbol)
         print(f"\nAsset: {asset_info['symbol']}")
         print(f"Payout: {asset_info.get('payout', 0)}%")
-        if asset_info.get("is_open"):
+        if asset_info.get("enabled"):
             print("Ativo aberto para operações")
         else:
             print("Ativo fechado ou indisponível")
@@ -80,16 +81,16 @@ def run_paper() -> None:
         
     except ValueError as e:
         print(f"Configuration error: {e}")
-        print("Please set QUOTEX_EMAIL and QUOTEX_PASSWORD in .env file")
+        print("Please set AVALON_EMAIL and AVALON_PASSWORD in .env file")
 
 
 def run_live() -> None:
-    """Live trading mode with Quotex platform."""
-    print("=== Live Trading Mode (Quotex) ===")
+    """Live trading mode with Avalon Broker platform."""
+    print("=== Live Trading Mode (Avalon Broker) ===")
     print("WARNING: This will place REAL orders with REAL money!")
     
-    if not settings.quotex_email or not settings.quotex_password:
-        print("ERROR: QUOTEX_EMAIL and QUOTEX_PASSWORD must be configured for live trading.")
+    if not settings.avalon_email or not settings.avalon_password:
+        print("ERROR: AVALON_EMAIL and AVALON_PASSWORD must be configured for live trading.")
         return
     
     confirmation = input("Type 'YES' to confirm live trading: ")
