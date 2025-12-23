@@ -4,7 +4,7 @@ FROM python:3.12-slim
 # Definir diretório de trabalho
 WORKDIR /app
 
-# Instalar dependências do sistema
+# Instalar dependências do sistema (incluindo git para pyquotex)
 RUN apt-get update && apt-get install -y \
     gcc \
     g++ \
