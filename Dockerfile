@@ -34,4 +34,4 @@ ENV PORT=5000
 ENV HOST=0.0.0.0
 
 # Comando para iniciar o app
-CMD exec gunicorn run:app --workers 2 --threads 4 --timeout 120 --bind 0.0.0.0:$PORT
+CMD ["/bin/sh", "-c", "gunicorn run:app --workers 2 --threads 4 --timeout 120 --bind 0.0.0.0:${PORT}"]
