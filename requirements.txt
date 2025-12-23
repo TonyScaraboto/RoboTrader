@@ -1,3 +1,5 @@
+# Robo Trader - Avalon Broker Dependencies
+# Updated: 2025-12-23
 ccxt>=4.2.0
 pandas>=2.2.0
 numpy>=1.26.0
